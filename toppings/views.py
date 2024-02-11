@@ -9,7 +9,11 @@ from .models import Topping
 @api_view(['GET'])
 def get_toppings(request):
     toppings = Topping.objects.all().values('name')
-    return Response({'Toppings': list(toppings)})
+    results = []
+    for topping in toppings:
+        results.append(topping['name'])
+    print(list(results))
+    return Response({'Toppings': list(results)})
 
 @api_view(['POST'])
 def add_topping(request):

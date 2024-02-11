@@ -1,45 +1,55 @@
-import json
-
-from django.shortcuts import render
+from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework.parsers import JSONParser
+from .models import Topping
 
-toppings = ['Thin Crust','Marinara Sauce', 'Mozzerella Cheese', 'Pepperoni']
+#toppings = ['Thin Crust','Marinara Sauce', 'Mozzerella Cheese', 'Pepperoni']
 # GET request to send available toppings
 @api_view(['GET'])
 def get_toppings(request):
-    return Response({'Toppings': toppings})
+    toppings = Topping.objects.all().values('name')
+    return Response({'Toppings': list(toppings)})
 
 @api_view(['POST'])
 def add_topping(request):
-    result = request.data["Topping"]
-     # check if new topping in old results
-    if result in toppings:
-        return Response("Topping Already Exists", status=status.HTTP_400_BAD_REQUEST)
-    else:
-        toppings.append(result)
-        print(toppings)
-        return Response(request.data, status=status.HTTP_201_CREATED)
+    new_topping_name = request.data.get("Topping")
+    if not new_topping_name:
+        return Response("Invalid request: 'Topping' field is missing", status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        new_topping = Topping.objects.create(name=new_topping_name)
+        return Response({'Topping': new_topping.name}, status=status.HTTP_201_CREATED)
+    except IntegrityError:
+        return Response("Topping already exists", status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['DELETE'])
 def delete_topping(request):
-    topping = request.data["Topping"]
-     # check if new topping in old results
-    if topping in toppings:
-        toppings.remove(topping)
-        return Response(request.data, status=status.HTTP_200_OK)
-    else:
-        return Response("Topping Not Present", status=status.HTTP_400_BAD_REQUEST)
+    topping_name = request.data.get("Topping")
+    if not topping_name:
+        return Response("Invalid request: 'Topping' field is missing", status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        topping = Topping.objects.get(name=topping_name)
+        topping.delete()
+        return Response({'Topping': topping_name}, status=status.HTTP_200_OK)
+    except Topping.DoesNotExist:
+        return Response("Topping not found", status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['PUT'])
 def edit_topping(request):
-    oldTopping = request.data["oldTopping"]
-    newTopping = request.data["newTopping"]
-    index = toppings.index(oldTopping)
-    if index > -1 and len(newTopping) > 0 and newTopping not in toppings:
-        toppings[index] = newTopping
-        return Response(request.data, status=status.HTTP_200_OK)
-    else:
-        return Response("Issue updating topping.", status=status.HTTP_400_BAD_REQUEST)
+    old_topping_name = request.data.get("oldTopping")
+    new_topping_name = request.data.get("newTopping")
+    if not old_topping_name or not new_topping_name:
+        return Response("Invalid request: 'oldTopping' or 'newTopping' field is missing", status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        topping = Topping.objects.get(name=old_topping_name)
+        topping.name = new_topping_name
+        topping.save()
+        return Response({'Topping': new_topping_name}, status=status.HTTP_200_OK)
+    except Topping.DoesNotExist:
+        return Response("Topping not found", status=status.HTTP_400_BAD_REQUEST)
+

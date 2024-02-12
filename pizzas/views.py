@@ -2,22 +2,22 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .models import Pizza, PizzaTopping
-from .serializers import PizzaSerializer
-
-
-#pizzas = [{"Name": "Margherita", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Fresh Basil"]},
-#          {"Name": "Pepperoni", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Pepperoni"]}]
 
 # GET request to send available pizzas
 @api_view(['GET'])
 def get_pizzas(request):
+    # Retrieve all pizza instances from the database
     pizzas = Pizza.objects.all()
-    data = [{'Name': pizza.name, 'Toppings': [topping.topping_name for topping in pizza.pizzatopping_set.all()]} for pizza in pizzas]
+
+    # Prepare the response data by iterating over each pizza instance, including its name and associated toppings
+    data = [{'Name': pizza.name, 'Toppings': [topping.topping_name for topping in pizza.pizzatopping_set.all()]} for
+            pizza in pizzas]
+
+    # Return the response containing the pizza data
     return Response(data)
 
 @api_view(['POST'])
 def add_pizza(request):
-    print(request.data)
     # Extract data from request
     name = request.data.get('Name')
     toppings = request.data.get('Toppings', [])
@@ -29,6 +29,11 @@ def add_pizza(request):
         return Response("Missing 'Toppings' field in request data", status=status.HTTP_400_BAD_REQUEST)
 
     try:
+        # Check if the pizza name already exists
+        print(Pizza.objects.filter(name=name).exists())
+        if Pizza.objects.filter(name=name).exists():
+            return Response("Pizza with this name already exists", status=status.HTTP_400_BAD_REQUEST)
+
         # Create Pizza instance
         pizza = Pizza.objects.create(name=name)
 
@@ -43,21 +48,49 @@ def add_pizza(request):
 @api_view(['DELETE'])
 def delete_pizza(request):
     try:
-        pizza = Pizza.objects.get(name=request.data['Name'])
+        # Attempt to get the pizza instance by name from the request data
+        pizza_name = request.data.get('Name')
+        pizza = Pizza.objects.get(name=pizza_name)
     except Pizza.DoesNotExist:
+
+        # If the pizza with the provided name does not exist, return a 400 response
         return Response("Pizza Not Present", status=status.HTTP_400_BAD_REQUEST)
+
+    # If pizza exists, delete it from the database
     pizza.delete()
+
+    # Return a success response upon successful deletion
     return Response(status=status.HTTP_200_OK)
 
 @api_view(['PUT'])
 def edit_pizza(request):
     try:
-        old_pizza = Pizza.objects.get(name=request.data["Name"])
+        # Get the old pizza instance by name
+        old_pizza_name = request.data.get("oldPizza")
+        old_pizza = Pizza.objects.get(name=old_pizza_name)
     except Pizza.DoesNotExist:
-        return Response("Old pizza not found.", status=status.HTTP_400_BAD_REQUEST)
+        return Response("Pizza not found.", status=status.HTTP_400_BAD_REQUEST)
 
-    serializer = PizzaSerializer(old_pizza, data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # Extract updated data from request
+    new_name = request.data.get('newPizza', {}).get('Name')
+    new_toppings = request.data.get('newPizza', {}).get('Toppings', [])
+
+    try:
+        # Update pizza name if provided
+        if new_name:
+            old_pizza.name = new_name
+            old_pizza.save()
+
+        # Update toppings if provided
+        if new_toppings:
+
+            # Delete existing toppings
+            old_pizza.pizzatopping_set.all().delete()
+
+            # Create new toppings
+            for topping_name in new_toppings:
+                PizzaTopping.objects.create(pizza=old_pizza, topping_name=topping_name)
+
+        return Response("Pizza updated successfully", status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response(f"Error occurred: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)

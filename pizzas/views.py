@@ -1,60 +1,63 @@
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from .models import Pizza, PizzaTopping
+from .serializers import PizzaSerializer
 
-pizzas = [{"Name": "Margherita", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Fresh Basil"]},
-          {"Name": "Pepperoni", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Pepperoni"]}]
+
+#pizzas = [{"Name": "Margherita", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Fresh Basil"]},
+#          {"Name": "Pepperoni", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Pepperoni"]}]
 
 # GET request to send available pizzas
 @api_view(['GET'])
 def get_pizzas(request):
-    return Response(pizzas)
+    pizzas = Pizza.objects.all()
+    data = [{'Name': pizza.name, 'Toppings': [topping.topping_name for topping in pizza.pizzatopping_set.all()]} for pizza in pizzas]
+    return Response(data)
 
-# POST request to update pizzas
 @api_view(['POST'])
 def add_pizza(request):
-    new_pizza = request.data
+    print(request.data)
+    # Extract data from request
+    name = request.data.get('Name')
+    toppings = request.data.get('Toppings', [])
 
-    # Check if pizza already exists based on a specific key
-    for pizza in pizzas:
-        if pizza["Name"].lower() == new_pizza["Name"].lower():
-            return Response("Pizza with the same name already exists", status=status.HTTP_400_BAD_REQUEST)
+    # Validate request data
+    if not name:
+        return Response("Missing 'Name' field in request data", status=status.HTTP_400_BAD_REQUEST)
+    if not toppings:
+        return Response("Missing 'Toppings' field in request data", status=status.HTTP_400_BAD_REQUEST)
 
-    # If the pizza doesn't exist, add it to the list
-    pizzas.append(new_pizza)
-    return Response(request.data, status=status.HTTP_201_CREATED)
+    try:
+        # Create Pizza instance
+        pizza = Pizza.objects.create(name=name)
+
+        # Create PizzaTopping instances for each topping
+        for topping_name in toppings:
+            PizzaTopping.objects.create(pizza=pizza, topping_name=topping_name)
+
+        return Response("Pizza added successfully", status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response(f"Error occurred: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['DELETE'])
 def delete_pizza(request):
-    pizza = request.data
-
-    # Check if pizza already exists and remove it if present
-    if pizza in pizzas:
-        pizzas.remove(pizza)
-        return Response(request.data, status=status.HTTP_200_OK)
-    else:
+    try:
+        pizza = Pizza.objects.get(name=request.data['Name'])
+    except Pizza.DoesNotExist:
         return Response("Pizza Not Present", status=status.HTTP_400_BAD_REQUEST)
-
+    pizza.delete()
+    return Response(status=status.HTTP_200_OK)
 
 @api_view(['PUT'])
 def edit_pizza(request):
-    oldPizza = request.data["oldPizza"]
-    newPizza = request.data["newPizza"]
+    try:
+        old_pizza = Pizza.objects.get(name=request.data["Name"])
+    except Pizza.DoesNotExist:
+        return Response("Old pizza not found.", status=status.HTTP_400_BAD_REQUEST)
 
-    for index, pizza in enumerate(pizzas):
-        if pizza["Name"].lower() == oldPizza.lower():
-            # Check if the new pizza name already exists
-            if "Name" in newPizza and newPizza["Name"].lower() in (p["Name"].lower() for p in pizzas if p != pizza):
-                return Response("New pizza name already exists.", status=status.HTTP_400_BAD_REQUEST)
-
-            # Update pizza name if it's being changed
-            if "Name" in newPizza:
-                pizzas[index]["Name"] = newPizza["Name"]
-
-            # Update toppings if they're being changed
-            if "Toppings" in newPizza:
-                pizzas[index]["Toppings"] = newPizza["Toppings"]
-
-            return Response(request.data, status=status.HTTP_200_OK)
-
-    return Response("Old pizza not found.", status=status.HTTP_400_BAD_REQUEST)
+    serializer = PizzaSerializer(old_pizza, data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -17,6 +17,7 @@ def get_toppings(request):
 
 @api_view(['POST'])
 def add_topping(request):
+    print(request)
     new_topping_name = request.data.get("Topping")
     if not new_topping_name:
         return Response("Invalid request: 'Topping' field is missing", status=status.HTTP_400_BAD_REQUEST)

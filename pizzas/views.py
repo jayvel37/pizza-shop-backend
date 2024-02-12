@@ -1,60 +1,96 @@
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-
-pizzas = [{"Name": "Margherita", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Fresh Basil"]},
-          {"Name": "Pepperoni", "Toppings": ["tomato sauce", "Mozzarella Cheese", "Pepperoni"]}]
+from .models import Pizza, PizzaTopping
 
 # GET request to send available pizzas
 @api_view(['GET'])
 def get_pizzas(request):
-    return Response(pizzas)
+    # Retrieve all pizza instances from the database
+    pizzas = Pizza.objects.all()
 
-# POST request to update pizzas
+    # Prepare the response data by iterating over each pizza instance, including its name and associated toppings
+    data = [{'Name': pizza.name, 'Toppings': [topping.topping_name for topping in pizza.pizzatopping_set.all()]} for
+            pizza in pizzas]
+
+    # Return the response containing the pizza data
+    return Response(data)
+
 @api_view(['POST'])
 def add_pizza(request):
-    new_pizza = request.data
+    # Extract data from request
+    name = request.data.get('Name')
+    toppings = request.data.get('Toppings', [])
 
-    # Check if pizza already exists based on a specific key
-    for pizza in pizzas:
-        if pizza["Name"].lower() == new_pizza["Name"].lower():
-            return Response("Pizza with the same name already exists", status=status.HTTP_400_BAD_REQUEST)
+    # Validate request data
+    if not name:
+        return Response("Missing 'Name' field in request data", status=status.HTTP_400_BAD_REQUEST)
+    if not toppings:
+        return Response("Missing 'Toppings' field in request data", status=status.HTTP_400_BAD_REQUEST)
 
-    # If the pizza doesn't exist, add it to the list
-    pizzas.append(new_pizza)
-    return Response(request.data, status=status.HTTP_201_CREATED)
+    try:
+        # Check if the pizza name already exists
+        print(Pizza.objects.filter(name=name).exists())
+        if Pizza.objects.filter(name=name).exists():
+            return Response("Pizza with this name already exists", status=status.HTTP_400_BAD_REQUEST)
+
+        # Create Pizza instance
+        pizza = Pizza.objects.create(name=name)
+
+        # Create PizzaTopping instances for each topping
+        for topping_name in toppings:
+            PizzaTopping.objects.create(pizza=pizza, topping_name=topping_name)
+
+        return Response("Pizza added successfully", status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response(f"Error occurred: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['DELETE'])
 def delete_pizza(request):
-    pizza = request.data
+    try:
+        # Attempt to get the pizza instance by name from the request data
+        pizza_name = request.data.get('Name')
+        pizza = Pizza.objects.get(name=pizza_name)
+    except Pizza.DoesNotExist:
 
-    # Check if pizza already exists and remove it if present
-    if pizza in pizzas:
-        pizzas.remove(pizza)
-        return Response(request.data, status=status.HTTP_200_OK)
-    else:
+        # If the pizza with the provided name does not exist, return a 400 response
         return Response("Pizza Not Present", status=status.HTTP_400_BAD_REQUEST)
 
+    # If pizza exists, delete it from the database
+    pizza.delete()
+
+    # Return a success response upon successful deletion
+    return Response(status=status.HTTP_200_OK)
 
 @api_view(['PUT'])
 def edit_pizza(request):
-    oldPizza = request.data["oldPizza"]
-    newPizza = request.data["newPizza"]
+    try:
+        # Get the old pizza instance by name
+        old_pizza_name = request.data.get("oldPizza")
+        old_pizza = Pizza.objects.get(name=old_pizza_name)
+    except Pizza.DoesNotExist:
+        return Response("Pizza not found.", status=status.HTTP_400_BAD_REQUEST)
 
-    for index, pizza in enumerate(pizzas):
-        if pizza["Name"].lower() == oldPizza.lower():
-            # Check if the new pizza name already exists
-            if "Name" in newPizza and newPizza["Name"].lower() in (p["Name"].lower() for p in pizzas if p != pizza):
-                return Response("New pizza name already exists.", status=status.HTTP_400_BAD_REQUEST)
+    # Extract updated data from request
+    new_name = request.data.get('newPizza', {}).get('Name')
+    new_toppings = request.data.get('newPizza', {}).get('Toppings', [])
 
-            # Update pizza name if it's being changed
-            if "Name" in newPizza:
-                pizzas[index]["Name"] = newPizza["Name"]
+    try:
+        # Update pizza name if provided
+        if new_name:
+            old_pizza.name = new_name
+            old_pizza.save()
 
-            # Update toppings if they're being changed
-            if "Toppings" in newPizza:
-                pizzas[index]["Toppings"] = newPizza["Toppings"]
+        # Update toppings if provided
+        if new_toppings:
 
-            return Response(request.data, status=status.HTTP_200_OK)
+            # Delete existing toppings
+            old_pizza.pizzatopping_set.all().delete()
 
-    return Response("Old pizza not found.", status=status.HTTP_400_BAD_REQUEST)
+            # Create new toppings
+            for topping_name in new_toppings:
+                PizzaTopping.objects.create(pizza=old_pizza, topping_name=topping_name)
+
+        return Response("Pizza updated successfully", status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response(f"Error occurred: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)

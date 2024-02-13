@@ -16,6 +16,12 @@ def get_pizzas(request):
     # Return the response containing the pizza data
     return Response(data)
 
+@api_view(['GET'])
+def test(request):
+    # Retrieve all pizza instances from the database
+    data = "hello I'm working"
+    return Response(data)
+
 @api_view(['POST'])
 def add_pizza(request):
     # Extract data from request

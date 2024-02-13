@@ -83,7 +83,7 @@ WSGI_APPLICATION = 'pizzaShop.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'pgadmin',
+        'NAME': 'postgres',
         'USER': 'pizzaShopAdmin',
         'PASSWORD': 'pizzaShopDBPassword',
         'HOST': 'pizzashopprod.c7sw4oeiyszy.us-east-2.rds.amazonaws.com',
